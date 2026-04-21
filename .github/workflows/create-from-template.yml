@@ -25,33 +25,30 @@ jobs:
           GH_TOKEN: ${{ secrets.GHA_TOKEN }}
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
-          # 1. Extração Robusta (awk é melhor que grep para formulários YAML do GitHub)
-          # Ele busca o que está após a pergunta e limpa espaços extras
-          REPO_NAME=$(echo "$ISSUE_BODY" | awk -F'Qual o nome do novo repositório\\?' '{print $2}' | xargs | awk '{print $1}')
+          # Extract repo name from form field - handle various formatting
+          REPO_NAME=$(echo "$ISSUE_BODY" | sed -n '/Qual o nome do novo repositório?/,/^$/p' | tail -n +2 | head -n 1 | xargs)
           
-          # 2. Exportação Imediata (para garantir que o nome apareça mesmo se o passo falhar depois)
-          echo "REPO_NAME=$REPO_NAME" >> $GITHUB_ENV
-
-          # 3. Validação de segurança
-          if [ -z "$REPO_NAME" ] || [ "$REPO_NAME" == "_Noresponse_" ]; then
-            echo "ERRO: Nome do repositório não encontrado." && exit 1
+          # Validate that REPO_NAME was extracted
+          if [ -z "$REPO_NAME" ]; then
+            echo "❌ Failed to extract repository name from issue"
+            exit 1
           fi
-
-          # 4. Criação do Repo
-          gh repo create "VojoLabs/$REPO_NAME" \
-            --template "VojoLabs/template-infra-aws" \
+          
+          echo "Repository name: $REPO_NAME"
+          
+          # Define destination
+          DESTINATION="${{ github.repository_owner }}/$REPO_NAME"
+          
+          # Create repository from template
+          gh repo create "$DESTINATION" \
+            --template "${{ github.repository }}" \
             --public \
             --clone
-
-          # 5. Configuração de Branches
-          if [ -d "$REPO_NAME" ]; then
-            cd "$REPO_NAME"
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            
-            git checkout main || git checkout -b main
-            git checkout -b develop
-            git push origin develop
+          
+          # Enter directory, create develop branch and push
+          cd "$REPO_NAME"
+          git checkout -b develop
+          git push origin develop
           else
             echo "ERRO: O repositório não foi clonado corretamente." && exit 1
           fi
