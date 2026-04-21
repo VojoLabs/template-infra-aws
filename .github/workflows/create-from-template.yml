@@ -1,0 +1,38 @@
+name: Create Repo from Template
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  create-repository:
+    # Só roda se a issue tiver a etiqueta que definimos no formulário
+    if: contains(github.event.issue.labels.*.name, 'template-bot')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Repo
+        env:
+          GH_TOKEN: ${{ secrets.GHA_TOKEN }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          # 1. Extrair o nome do repo do formulário (mesma lógica anterior)
+          REPO_NAME=$(echo "$ISSUE_BODY" | grep -A 1 "Qual o nome do novo repositório?" | tail -n 1 | xargs)
+          
+          # 2. Definir o destino (mesma organização do template)
+          DESTINATION="${{ github.repository_owner }}/$REPO_NAME"
+          
+          # 3. Criar o repositório a partir do template
+          gh repo create "$DESTINATION" \
+            --template "${{ github.repository }}" \
+            --public \
+            --clone
+          
+          # 4. Entrar na pasta, criar a branch develop e dar push
+          cd "$REPO_NAME"
+          git checkout -b develop
+          git push origin develop
+          
+      - name: Close Issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue close ${{ github.event.issue.number }} --comment "✅ Repositório criado com sucesso em **${{ github.repository_owner }}** com as branches main e develop!"
