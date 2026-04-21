@@ -5,16 +5,13 @@ on:
 
 jobs:
   create-repository:
-    # Só executa se a issue começar com o prefixo do nosso formulário
     if: startsWith(github.event.issue.title, '[Novo Projeto]')
     runs-on: ubuntu-latest
     
     steps:
-      # 1. Inicializa o ambiente Git no Runner
       - name: Checkout Template
         uses: actions/checkout@v4
 
-      # 2. Log inicial na Issue
       - name: Add Start Comment
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -22,46 +19,43 @@ jobs:
           gh issue comment ${{ github.event.issue.number }} \
             --body "⏳ **Iniciando a configuração...** O repositório está sendo provisionado na organização **VojoLabs**."
 
-      # 3. Processo de Criação e Configuração
       - name: Create and Configure Repo
         id: create_step
         env:
           GH_TOKEN: ${{ secrets.GHA_TOKEN }}
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
-          # Extração limpa do nome do repo (remove espaços e quebras de linha)
-          REPO_NAME=$(echo "$ISSUE_BODY" | grep -A 1 "Qual o nome do novo repositório?" | tail -n 1 | sed 's/[[:space:]]//g')
+          # 1. Extração Robusta (awk é melhor que grep para formulários YAML do GitHub)
+          # Ele busca o que está após a pergunta e limpa espaços extras
+          REPO_NAME=$(echo "$ISSUE_BODY" | awk -F'Qual o nome do novo repositório\\?' '{print $2}' | xargs | awk '{print $1}')
           
-          if [ -z "$REPO_NAME" ] || [ "$REPO_NAME" = "_Noresponse_" ]; then
-            echo "ERRO: Nome do repositório não encontrado no corpo da issue." && exit 1
-          fi
-
-          # Exporta para os próximos passos usarem
+          # 2. Exportação Imediata (para garantir que o nome apareça mesmo se o passo falhar depois)
           echo "REPO_NAME=$REPO_NAME" >> $GITHUB_ENV
 
-          echo "🚀 Criando: VojoLabs/$REPO_NAME"
+          # 3. Validação de segurança
+          if [ -z "$REPO_NAME" ] || [ "$REPO_NAME" == "_Noresponse_" ]; then
+            echo "ERRO: Nome do repositório não encontrado." && exit 1
+          fi
 
-          # Cria o repositório a partir do template
+          # 4. Criação do Repo
           gh repo create "VojoLabs/$REPO_NAME" \
             --template "VojoLabs/template-infra-aws" \
             --public \
             --clone
 
-          # Entra no diretório e configura branches
+          # 5. Configuração de Branches
           if [ -d "$REPO_NAME" ]; then
             cd "$REPO_NAME"
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             
-            # Garante a existência da main e cria a develop
             git checkout main || git checkout -b main
             git checkout -b develop
             git push origin develop
           else
-            echo "ERRO: Falha ao clonar o repositório recém-criado." && exit 1
+            echo "ERRO: O repositório não foi clonado corretamente." && exit 1
           fi
 
-      # 4. Log de Sucesso (com link direto)
       - name: Success Comment
         if: success()
         env:
@@ -76,16 +70,19 @@ jobs:
             - Organização: \`VojoLabs\`
             - Branches: \`main\`, \`develop\`"
 
-      # 5. Log de Erro (avisa se algo falhar)
       - name: Error Comment
         if: failure()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Se REPO_NAME estiver vazio, usamos um fallback para o log não ficar feio
+          DISPLAY_NAME="${{ env.REPO_NAME }}"
+          if [ -z "$DISPLAY_NAME" ]; then DISPLAY_NAME="indefinido"; fi
+
           gh issue comment ${{ github.event.issue.number }} \
-            --body "❌ **Erro na configuração:** Não foi possível concluir a criação do repositório. 
+            --body "❌ **Erro na configuração:** Não foi possível criar o repositório \`$DISPLAY_NAME\`.
             
-            **Possíveis causas:**
-            1. O nome \`${{ env.REPO_NAME }}\` já existe na organização.
-            2. O \`GHA_TOKEN\` expirou ou não tem permissão de escrita em organizações.
-            3. O nome do repositório contém caracteres inválidos."
+            **Verificações sugeridas:**
+            1. O nome já existe na organização **VojoLabs**?
+            2. O seu Personal Access Token (**GHA_TOKEN**) ainda é válido?
+            3. O nome digitado possui caracteres proibidos (espaços, acentos)?"
