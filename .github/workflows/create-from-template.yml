@@ -5,46 +5,54 @@ on:
 
 jobs:
   create-repository:
-    # Verifica se o título da issue começa com o prefixo do seu formulário
     if: startsWith(github.event.issue.title, '[Novo Projeto]')
     runs-on: ubuntu-latest
     steps:
+      # 1. Log de Início
+      - name: Add Start Comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment ${{ github.event.issue.number }} \
+            --body "⏳ **Iniciando a configuração...** O repositório está a ser provisionado na VojoLabs."
+
+      # 2. Lógica de Criação (com a limpeza de nome robusta)
       - name: Create Repo
+        id: create_step
         env:
           GH_TOKEN: ${{ secrets.GHA_TOKEN }}
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
-          # 1. Extrair o nome do repo do formulário (mesma lógica anterior)
-          REPO_NAME=$(echo "$ISSUE_BODY" | grep -A 1 "Qual o nome do novo repositório?" | tail -n 1 | xargs)
+          REPO_NAME=$(echo "$ISSUE_BODY" | grep -A 1 "Qual o nome do novo repositório?" | tail -n 1 | sed 's/[[:space:]]//g')
           
-          # 2. Definir o destino (mesma organização do template)
-          DESTINATION="${{ github.repository_owner }}/$REPO_NAME"
+          if [ -z "$REPO_NAME" ] || [ "$REPO_NAME" = "_Noresponse_" ]; then
+            echo "Erro: Nome vazio" && exit 1
+          fi
+
+          echo "REPO_NAME=$REPO_NAME" >> $GITHUB_ENV
           
-          # 3. Criar o repositório a partir do template
-          gh repo create "$DESTINATION" \
-            --template "${{ github.repository }}" \
-            --public \
-            --clone
+          gh repo create "VojoLabs/$REPO_NAME" --template "VojoLabs/template-infra-aws" --public --clone
           
-          # 4. Entrar na pasta, criar a branch develop e dar push
           cd "$REPO_NAME"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b develop
           git push origin develop
-          
-      - name: Close Issue
+
+      # 3. Log de Sucesso (Só roda se tudo der certo)
+      - name: Success Comment
+        if: success()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # REPO_NAME é a variável que extraímos do formulário no step anterior
         run: |
-          REPO_URL="https://github.com/${{ github.repository_owner }}/$REPO_NAME"
-          
           gh issue close ${{ github.event.issue.number }} \
-            --comment "✅ **Repositório criado com sucesso!**
-            
-            O seu novo projeto já está disponível em:
-            🔗 $REPO_URL
-            
-            **Estrutura configurada:**
-            - Branch: \`main\` (padrão)
-            - Branch: \`develop\`
-            - Origem: \`Organization: ${{ github.repository_owner }}\`"
+            --comment "✅ **Repositório criado!** 🔗 https://github.com/VojoLabs/${{ env.REPO_NAME }}"
+
+      # 4. Log de Erro (Só roda se algum step anterior falhar)
+      - name: Error Comment
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment ${{ github.event.issue.number }} \
+            --body "❌ **Erro na configuração:** Não foi possível criar o repositório. Por favor, verifique se o nome já existe ou se as permissões do Token estão corretas."
