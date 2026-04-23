@@ -22,8 +22,6 @@ jobs:
         uses: peter-murray/issue-forms-body-parser@v3
         with:
           issue_id: ${{ github.event.issue.number }}
-          separator: '###'
-          label_marker: '###'
 
       - name: Add Start Comment
         env:
@@ -31,6 +29,10 @@ jobs:
         run: |
           gh issue comment ${{ github.event.issue.number }} \
             --body "⏳ **Iniciando a configuração...** O repositório está sendo provisionado na organização **VojoLabs**."
+
+      - name: Debug Payload
+        run: |
+            echo "Payload completo: ${{ steps.parse.outputs.payload }}"
 
       - name: Create and Configure Repo
         id: create_step
