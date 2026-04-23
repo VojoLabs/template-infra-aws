@@ -19,9 +19,9 @@ jobs:
 
       - name: Parse Issue Body
         id: parse
-        uses: peter-murray/issue-forms-body-parser@v3
+        uses: stefanbuck/github-issue-parser@v3
         with:
-          issue_id: ${{ github.event.issue.number }}
+          issue_id: .github/ISSUE_TEMPLATE/new-repo.yml
 
       - name: Add Start Comment
         env:
@@ -32,14 +32,14 @@ jobs:
 
       - name: Debug Payload
         run: |
-            echo "Payload completo: ${{ steps.parse.outputs.payload }}"
+            echo "Payload completo: ${{ steps.parse.outputs.jsonString }}"
 
       - name: Create and Configure Repo
         id: create_step
         env:
           GH_TOKEN: ${{ secrets.GHA_TOKEN }}
           # Extrai o valor do ID 'nome_repo' definido no seu arquivo de formulário
-          REPO_NAME: ${{ fromJson(steps.parse.outputs.payload).nome_repo }}
+          REPO_NAME: ${{ steps.parse.outputs.issueparser_nome_repo }}
         run: |
           if [ -z "$REPO_NAME" ]; then
             echo "❌ Erro: Não foi possível extrair o nome do repositório."
