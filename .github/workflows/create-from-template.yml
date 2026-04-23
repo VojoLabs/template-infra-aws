@@ -59,6 +59,15 @@ jobs:
           
           # Configura branch develop
           cd "$REPO_NAME"
+
+          # Configura o Git para usar o seu token na URL remota
+          # Isso evita o erro de "could not read Username"
+          git remote set-url origin "https://x-access-token:${{ secrets.GHA_TOKEN }}@github.com/$DESTINATION.git"
+          
+          # Configura identidade básica (necessário para commits/pushes)
+          git config user.name "VojoLabs Bot"
+          git config user.email "bot@vojolabs.org"
+
           git checkout -b develop
           git push origin develop
 
